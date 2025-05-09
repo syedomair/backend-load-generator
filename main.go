@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"time"
 
@@ -10,26 +12,59 @@ import (
 )
 
 func main() {
-	baseURL := getEnv("BASE_URL", "http://localhost:8080")
+	baseURL := getEnv("BASE_URL", "http://192.168.49.2:32273")
 	interval := getEnvDuration("INTERVAL_SECONDS", 3)
 
 	client := resty.New()
 
 	for {
-		// Call /users
-		resp1, err1 := client.R().Get(baseURL + "/users")
+		headers := map[string]string{}
+
+		if rand.Intn(2) == 0 {
+			headers["x-user-type"] = "beta"
+			fmt.Println("Sending with header: x-user-type: beta")
+		} else {
+			fmt.Println("Sending without header")
+		}
+
+		resp1, err1 := client.R().
+			SetHeaders(headers).
+			Get(baseURL + "/user/users")
 		if err1 != nil {
 			log.Println("Error calling /users:", err1)
 		} else {
-			fmt.Printf("GET /users [%d]\n", resp1.StatusCode())
+			var bodyInterface map[string]interface{}
+			err := json.Unmarshal(resp1.Body(), &bodyInterface)
+			if err != nil {
+				log.Printf("Error unmarshaling JSON: %v\n", err)
+				return
+			}
+
+			if result, ok := bodyInterface["result"]; ok {
+				jsonResult, err := json.Marshal(result)
+				if err != nil {
+					log.Printf("Error marshaling result JSON: %v\n", err)
+					return
+				}
+				fmt.Println(string(jsonResult))
+			}
+
+			if data, ok := bodyInterface["data"]; ok {
+				jsonData, err := json.Marshal(data)
+				if err != nil {
+					log.Printf("Error marshaling data JSON: %v\n", err)
+					return
+				}
+				fmt.Println(string(jsonData))
+			}
 		}
 
 		// Call /departments
-		resp2, err2 := client.R().Get(baseURL + "/departments")
+		resp2, err2 := client.R().Get(baseURL + "/department/departments")
 		if err2 != nil {
 			log.Println("Error calling /departments:", err2)
 		} else {
-			fmt.Printf("GET /departments [%d]\n", resp2.StatusCode())
+			fmt.Printf("GET v1/departments [%d]\n", resp2.StatusCode())
 		}
 
 		time.Sleep(interval)
