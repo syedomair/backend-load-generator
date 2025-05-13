@@ -112,7 +112,7 @@ func getBaseURL() string {
 			}
 			if len(nodes.Items) > 0 {
 				nodeIP := nodes.Items[0].Status.Addresses[0].Address
-				baseURL = fmt.Sprintf("http://%s:%d\n", nodeIP, nodePort)
+				baseURL = fmt.Sprintf("http://%s:%d", nodeIP, nodePort)
 			}
 		}
 	}
