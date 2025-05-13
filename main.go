@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,14 +10,18 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 func main() {
-	baseURL := getEnv("BASE_URL", "http://192.168.49.2:32273")
+
+	baseURL := getBaseURL()
 	interval := getEnvDuration("INTERVAL_SECONDS", 3)
 
 	client := resty.New()
-
 	for {
 		headers := map[string]string{}
 
@@ -69,6 +74,49 @@ func main() {
 
 		time.Sleep(interval)
 	}
+}
+
+func getBaseURL() string {
+	baseURL := ""
+	config, err := clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile)
+	if err != nil {
+		log.Println("Falling back to in-cluster config")
+		config, err = rest.InClusterConfig()
+		if err != nil {
+			log.Fatalf("Error loading kube config: %v", err)
+		}
+	}
+
+	// Create Kubernetes client
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("Error creating k8s client: %v", err)
+	}
+
+	// Get service information
+	serviceName := "istio-ingressgateway"
+	namespace := "istio-system"
+
+	service, err := kubeClient.CoreV1().Services(namespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	if err != nil {
+		log.Fatalf("Error getting service: %v", err)
+	}
+
+	// Find the http2 port
+	for _, port := range service.Spec.Ports {
+		if port.Name == "http2" && port.Port == 80 {
+			nodePort := port.NodePort
+			nodes, err := kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				log.Fatalf("Error listing nodes: %v", err)
+			}
+			if len(nodes.Items) > 0 {
+				nodeIP := nodes.Items[0].Status.Addresses[0].Address
+				baseURL = fmt.Sprintf("http://%s:%d\n", nodeIP, nodePort)
+			}
+		}
+	}
+	return baseURL
 }
 
 func getEnv(key string, fallback string) string {
